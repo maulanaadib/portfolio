@@ -1,0 +1,108 @@
+// Prisma schema for editable portfolio
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Profile {
+  id          String   @id @default(cuid())
+  fullName    String
+  title       String   // e.g. "Full-Stack Developer"
+  tagline     String?  // short subtitle
+  bio         String   // About me paragraph
+  avatarUrl   String?
+  location    String?
+  email       String?
+  phone       String?
+  resumeUrl   String?
+  socialLinks String?  // JSON: { github, linkedin, twitter, instagram, ... }
+  updatedAt   DateTime @updatedAt
+}
+
+model Skill {
+  id        String   @id @default(cuid())
+  name      String
+  category  String   // e.g. "Frontend", "Backend", "Tools"
+  level     Int      @default(50) // 0-100
+  iconUrl   String?
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  description String
+  content     String?  // long-form markdown-ish
+  imageUrl    String?
+  demoUrl     String?
+  repoUrl     String?
+  tags        String   // comma-separated
+  featured    Boolean  @default(false)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Experience {
+  id          String   @id @default(cuid())
+  company     String
+  position    String
+  location    String?
+  startDate   String   // "2023-01" (free text for flexibility)
+  endDate     String?  // null = present
+  description String
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+}
+
+model Education {
+  id          String   @id @default(cuid())
+  school      String
+  degree      String
+  field       String?
+  startDate   String
+  endDate     String?
+  description String?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+}
+
+model Service {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  icon        String?  // emoji or icon name
+  order       Int      @default(0)
+}
+
+model Testimonial {
+  id        String   @id @default(cuid())
+  name      String
+  role      String?
+  company   String?
+  content   String
+  avatarUrl String?
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  subject   String?
+  content   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Setting {
+  key   String @id
+  value String
+}
