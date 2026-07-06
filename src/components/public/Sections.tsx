@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import type { Profile, Skill, Project, Experience, Education, Service, Testimonial } from "@prisma/client";
 
 type SocialLinks = { github?: string; linkedin?: string; twitter?: string; instagram?: string; website?: string };
 
@@ -18,8 +19,17 @@ export function socialIcon(key: string): string {
   return map[key] ?? key;
 }
 
+async function safe<T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    console.error(`[portfolio] ${label} query failed, rendering fallback:`, e instanceof Error ? e.message : e);
+    return fallback;
+  }
+}
+
 export async function Hero() {
-  const profile = await prisma.profile.findFirst();
+  const profile = await safe("Hero.profile", () => prisma.profile.findFirst(), null as Profile | null);
   if (!profile) {
     return (
       <section className="container-x pt-32 pb-20 text-center">
@@ -74,7 +84,7 @@ export async function Hero() {
 }
 
 export async function About() {
-  const profile = await prisma.profile.findFirst();
+  const profile = await safe("About.profile", () => prisma.profile.findFirst(), null as Profile | null);
   if (!profile) return null;
   return (
     <section id="about" className="container-x py-20">
@@ -104,9 +114,9 @@ export async function About() {
 }
 
 export async function Skills() {
-  const skills = await prisma.skill.findMany({ orderBy: [{ category: "asc" }, { order: "asc" }] });
+  const skills = await safe("Skills.list", () => prisma.skill.findMany({ orderBy: [{ category: "asc" }, { order: "asc" }] }), [] as Skill[]);
   if (skills.length === 0) return null;
-  const grouped = skills.reduce<Record<string, typeof skills>>((acc, s) => {
+  const grouped = skills.reduce<Record<string, Skill[]>>((acc, s) => {
     (acc[s.category] ??= []).push(s);
     return acc;
   }, {});
@@ -141,7 +151,7 @@ export async function Skills() {
 }
 
 export async function Projects() {
-  const projects = await prisma.project.findMany({ orderBy: [{ order: "asc" }, { createdAt: "desc" }] });
+  const projects = await safe("Projects.list", () => prisma.project.findMany({ orderBy: [{ order: "asc" }, { createdAt: "desc" }] }), [] as Project[]);
   if (projects.length === 0) return null;
   return (
     <section id="projects" className="container-x py-20">
@@ -202,10 +212,10 @@ export async function Projects() {
 }
 
 export async function Experience() {
-  const [experiences, educations] = await Promise.all([
+  const [experiences, educations] = await safe("Experience.list", async () => Promise.all([
     prisma.experience.findMany({ orderBy: [{ order: "asc" }, { startDate: "desc" }] }),
     prisma.education.findMany({ orderBy: [{ order: "asc" }, { startDate: "desc" }] }),
-  ]);
+  ]), [[] as Experience[], [] as Education[]]);
   if (experiences.length === 0 && educations.length === 0) return null;
   return (
     <section id="experience" className="container-x py-20">
@@ -266,7 +276,7 @@ export async function Experience() {
 }
 
 export async function Services() {
-  const services = await prisma.service.findMany({ orderBy: [{ order: "asc" }] });
+  const services = await safe("Services.list", () => prisma.service.findMany({ orderBy: [{ order: "asc" }] }), [] as Service[]);
   if (services.length === 0) return null;
   return (
     <section id="services" className="container-x py-20">
@@ -288,7 +298,7 @@ export async function Services() {
 }
 
 export async function Testimonials() {
-  const testimonials = await prisma.testimonial.findMany({ orderBy: [{ order: "asc" }] });
+  const testimonials = await safe("Testimonials.list", () => prisma.testimonial.findMany({ orderBy: [{ order: "asc" }] }), [] as Testimonial[]);
   if (testimonials.length === 0) return null;
   return (
     <section className="container-x py-20">
@@ -325,7 +335,7 @@ export async function Testimonials() {
 }
 
 export async function Contact() {
-  const profile = await prisma.profile.findFirst();
+  const profile = await safe("Contact.profile", () => prisma.profile.findFirst(), null as Profile | null);
   return (
     <section id="contact" className="container-x py-20">
       <div className="max-w-3xl mx-auto">
