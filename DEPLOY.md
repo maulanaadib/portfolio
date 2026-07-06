@@ -1,120 +1,139 @@
 # Deployment Guide
 
-Deploy this portfolio to Vercel with a PostgreSQL database (Coolify or any provider).
+Deploy this portfolio to Vercel with a PostgreSQL database (Coolify or any provider). Two paths are documented — pick the one that fits your workflow.
 
-## Architecture
+## Recommended: Dashboard + GitHub (no CLI)
 
-- **App**: Vercel (Next.js 14)
-- **Database**: PostgreSQL (Coolify self-hosted, but works with any Postgres)
-- **Repo**: GitHub → auto-deploy on every push to `master`
+Zero local terminal auth needed. All setup happens in your browser.
 
-## One-time setup
+### Step 1: Get your database ready
 
-### 1. Database (Coolify)
+Make sure your Coolify PostgreSQL is reachable from the public internet. Get the connection string:
 
-In your Coolify dashboard:
+```
+postgresql://USER:PASSWORD@HOST:PORT/DBNAME
+```
 
-1. Create a new **PostgreSQL** resource
-2. Note the connection details (host, port, user, password, database name)
-3. Connection string format:
-   ```
-   postgresql://USER:PASSWORD@HOST:PORT/DBNAME
-   ```
-4. Make sure the DB is reachable from Vercel's region. If Coolify is on your local network, you may need to:
-   - Expose Postgres publicly (with firewall rules limiting to Vercel IPs), OR
-   - Use a tunnel (Cloudflare Tunnel, ngrok), OR
-   - Run Vercel CLI deploy from inside the same network (`vercel deploy` from a machine that can reach the DB)
+> **Tip**: If Coolify is on a private network, expose the DB via Cloudflare Tunnel or set Coolify's network to allow public access on the DB port with a strong password.
 
-> **Note**: For hobby use, the easiest path is to make the DB reachable from the public internet with a strong password. For production, use a managed DB (Neon, Supabase, Vercel Postgres) or a tunnel.
+### Step 2: Push schema to the database (run once, locally)
 
-### 2. Push schema to the database
-
-From your local machine:
+From your project folder:
 
 ```bash
-# 1. Create local .env with the production DATABASE_URL
-echo 'DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DBNAME"' > .env
-echo 'NEXTAUTH_SECRET="any-random-32-char-string-for-local-test"' >> .env
-echo 'NEXTAUTH_URL="http://localhost:3000"' >> .env
-echo 'ADMIN_EMAIL="admin@example.com"' >> .env
-echo 'ADMIN_PASSWORD="admin123"' >> .env
-echo 'ADMIN_NAME="Admin"' >> .env
+# Create .env with your production DATABASE_URL
+Copy-Item .env.example .env
+# Edit .env and set DATABASE_URL to your postgresql://... string
+# (you can also set the other env vars to placeholder values for now)
 
-# 2. Push the schema
+# Push schema
 npx prisma db push
-
-# 3. (Optional) Seed sample data
-npm run db:seed
 ```
 
 You should see: `Your database is now in sync with the Prisma schema.`
 
-### 3. Login to Vercel
+### Step 3: Create Vercel project
+
+1. Go to <https://vercel.com/new>
+2. Click **Import** next to `maulanaadib/portfolio` (or your fork)
+3. Vercel auto-detects Next.js — leave settings as default
+4. **Before clicking Deploy**, click **Environment Variables** and add:
+
+   | Name | Value |
+   |---|---|
+   | `DATABASE_URL` | `postgresql://USER:PASSWORD@HOST:PORT/DBNAME` |
+   | `NEXTAUTH_SECRET` | (generate below) |
+   | `NEXTAUTH_URL` | (set after first deploy — see step 5) |
+   | `ADMIN_EMAIL` | your admin email |
+   | `ADMIN_PASSWORD` | a strong password |
+   | `ADMIN_NAME` | your display name |
+
+5. Generate a strong `NEXTAUTH_SECRET`:
+
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+   ```
+
+   Paste the output as the value.
+
+6. **Skip `NEXTAUTH_URL` for now** — you'll set it after the first deploy gives you a URL.
+
+7. Click **Deploy**
+
+### Step 4: Wait for first deploy
+
+Takes 1-3 minutes. Vercel will show you a URL like `https://portfolio-xyz.vercel.app` when done.
+
+### Step 5: Set NEXTAUTH_URL to your actual URL
+
+1. Go to **Project → Settings → Environment Variables**
+2. Add `NEXTAUTH_URL` = `https://your-actual-url.vercel.app`
+3. Go to **Deployments** tab → click the three dots on the latest deployment → **Redeploy**
+
+(Without this, login redirects will fail.)
+
+### Step 6: Seed the production database
+
+Run the seed script against the production DB. From your project folder:
 
 ```bash
-vercel login
+# Set DATABASE_URL to your production value
+$env:DATABASE_URL = "postgresql://USER:PASSWORD@HOST:PORT/DBNAME"
+npx tsx prisma/seed.ts
 ```
 
-This opens a browser. Sign in with your Vercel account.
+This populates sample data. You can skip this and just log in to `/admin` to add your real content.
 
-### 4. Deploy
+### Step 7: Verify
 
-From the project folder:
+1. Open your site URL — should show the portfolio (with sample data if you seeded)
+2. Go to `/admin/login` and sign in with `ADMIN_EMAIL` / `ADMIN_PASSWORD`
+3. Add your real content via the dashboard
+
+---
+
+## Alternative: Vercel CLI (requires `vercel login`)
+
+If you prefer command-line deploys:
 
 ```bash
-# First-time: link the project (creates .vercel/ directory, asks for project name)
-vercel link
+# 1. Login (opens browser, one-time)
+vercel login
 
-# Then set all environment variables (replace values!):
-vercel env add DATABASE_URL production
-# paste: postgresql://USER:PASSWORD@HOST:PORT/DBNAME
+# 2. Set env vars
+$dbUrl = Read-Host "DATABASE_URL"
+$secret = node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+$adminEmail = Read-Host "ADMIN_EMAIL"
+$adminPass = Read-Host -AsSecureString "ADMIN_PASSWORD"
 
-vercel env add NEXTAUTH_SECRET production
-# paste: a 32+ character random string. Generate with:
-#   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+echo $dbUrl | vercel env add DATABASE_URL production
+echo $secret | vercel env add NEXTAUTH_SECRET production
+echo $adminEmail | vercel env add ADMIN_EMAIL production
+$adminPassPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($adminPass))
+echo $adminPassPlain | vercel env add ADMIN_PASSWORD production
+echo "Admin" | vercel env add ADMIN_NAME production
 
-vercel env add NEXTAUTH_URL production
-# paste: https://your-domain.vercel.app (you'll get this URL after first deploy)
-
-vercel env add ADMIN_EMAIL production
-# paste: your admin email
-
-vercel env add ADMIN_PASSWORD production
-# paste: a strong password
-
-vercel env add ADMIN_NAME production
-# paste: your display name
-
-# Trigger first production deploy
+# 3. Deploy
 vercel --prod
 ```
 
-After deploy finishes, Vercel prints your URL (e.g. `https://portfolio-xyz.vercel.app`).
+After first deploy, set `NEXTAUTH_URL` to the actual URL (see step 5 above) and redeploy.
 
-### 5. Update NEXTAUTH_URL
-
-After getting the production URL, update it:
+Or run the bundled one-shot script:
 
 ```bash
-vercel env add NEXTAUTH_URL production
-# paste: https://your-actual-url.vercel.app
-# Then remove the old one:
-vercel env rm NEXTAUTH_URL production
+pwsh scripts/deploy.ps1
 ```
 
-Or set it via Vercel dashboard: **Project → Settings → Environment Variables**.
-
-### 6. Seed production data
-
-Run the seed script against the production DB. Easiest: temporarily set `DATABASE_URL` to the production value, then run:
-
-```bash
-DATABASE_URL="postgresql://USER:PASSWORD@HOST:PORT/DBNAME" npx tsx prisma/seed.ts
-```
-
-> **Note**: This seeds sample data. You can also skip this step and just log in to `/admin` and add your real data through the UI.
+---
 
 ## Day-to-day workflow
+
+### Edit content (the whole point of the app!)
+
+1. Go to `https://your-site.vercel.app/admin/login`
+2. Sign in with `ADMIN_EMAIL` / `ADMIN_PASSWORD`
+3. Edit anything — changes appear on the public site within seconds (no redeploy needed)
 
 ### Push code changes
 
@@ -124,90 +143,86 @@ git commit -m "your change"
 git push
 ```
 
-Vercel auto-deploys. Check progress at `https://vercel.com/your-account/portfolio`.
+If you set up the GitHub Actions deploy workflow (see below), this auto-deploys. Otherwise, Vercel also auto-deploys on push when you connect the repo via the dashboard.
 
-### Edit content (the whole point of the app!)
+### Optional: Auto-deploy via GitHub Actions
 
-1. Go to `https://your-site.vercel.app/admin/login`
-2. Sign in with `ADMIN_EMAIL` / `ADMIN_PASSWORD`
-3. Edit anything — changes appear on the public site within seconds (no redeploy needed)
+The repo includes `.github/workflows/deploy.yml` that deploys via Vercel CLI. To enable:
 
-### Rotate the admin password
+1. Go to <https://vercel.com/account/tokens> → create a token → copy it
+2. Go to your GitHub repo → **Settings → Secrets and variables → Actions → New repository secret**
+3. Add three secrets:
+   - `VERCEL_TOKEN` = the token from step 1
+   - `VERCEL_ORG_ID` = your Vercel team ID (Settings → General in Vercel)
+   - `VERCEL_PROJECT_ID` = your project ID (Settings → General in Vercel)
 
-```bash
-vercel env rm ADMIN_PASSWORD production
-vercel env add ADMIN_PASSWORD production
-# paste new password
-```
+Now every push to `master` triggers a deploy via Actions.
 
-Then trigger a redeploy (or just edit via Vercel dashboard).
+---
 
 ## Custom domain
 
 In Vercel dashboard:
 
 1. **Project → Settings → Domains**
-2. Add your domain (e.g. `yourname.com`)
-3. Follow DNS instructions (add A record or CNAME)
-4. Update `NEXTAUTH_URL` env var to `https://yourname.com`
+2. Add your domain
+3. Follow DNS instructions
+4. Update `NEXTAUTH_URL` env var to `https://yourdomain.com`
 5. Redeploy
+
+---
 
 ## Local development
 
-The `.env.example` is for local dev. To run locally:
+The repo includes `.env.example`. To run locally:
 
 ```bash
-# Option A: use SQLite (change schema back temporarily)
-# Edit prisma/schema.prisma: provider = "sqlite"
-# Use DATABASE_URL="file:./dev.db"
-# Then: npx prisma db push && npm run db:seed
-
-# Option B: use the same Postgres from Coolify
+# Option A: same Postgres (no SQLite hassle)
 cp .env.example .env
 # Edit .env with your DATABASE_URL
 npx prisma db push
 npm run dev
+
+# Option B: SQLite (faster, no network)
+# Edit prisma/schema.prisma: provider = "sqlite"
+# Edit .env: DATABASE_URL="file:./dev.db"
+# Then: npx prisma db push && npm run db:seed && npm run dev
 ```
+
+---
 
 ## Troubleshooting
 
-### "Build failed: prisma generate"
+### Build fails with "prisma generate" error
 
-Vercel's `postinstall` script runs `prisma generate` automatically (defined in `package.json`). If it fails, check that:
-- `DATABASE_URL` is set in Vercel env vars
-- The DB is reachable from Vercel's build region
+Vercel runs `postinstall` which calls `prisma generate`. If it fails, check that `DATABASE_URL` is set in env vars (can be a placeholder for build, real for runtime).
 
-### "PrismaClientInitializationError" at runtime
+### Runtime: "PrismaClientInitializationError"
 
-The DB connection string is wrong, or the DB is unreachable from Vercel's runtime region. Check:
+DB connection string is wrong or DB is unreachable from Vercel's region. Check:
 - Connection string format (`postgresql://...`)
-- DB allows connections from Vercel's IPs
-- DB is running (check Coolify)
+- DB allows connections from Vercel's IPs (or is fully public)
+- DB is running in Coolify
 
-### Login redirects loop
+### Login redirects loop / not working
 
-`NEXTAUTH_URL` doesn't match the actual deployed URL. Update it via `vercel env add NEXTAUTH_URL production`.
+`NEXTAUTH_URL` doesn't match your deployed URL. Update it and redeploy.
 
-### Local dev shows old data
+### Changes not showing on public site
 
-Clear `.next` cache: `rm -rf .next && npm run dev`.
+Browser cache. Hard refresh (Ctrl+Shift+R). Or check Vercel function logs for errors.
+
+---
+
+## Architecture
+
+- **App**: Vercel (Next.js 14 with App Router)
+- **Database**: PostgreSQL (Coolify self-hosted, or any provider)
+- **CI**: GitHub Actions (typecheck + build verify on every push)
+- **CD**: Vercel auto-deploy on push, or GitHub Actions deploy workflow
 
 ## Cost
 
 - Vercel: Free tier covers hobby projects (100 GB bandwidth/month)
-- Coolify: Self-hosted, free (you own the server)
+- Coolify: Self-hosted, free
 - Domain (optional): ~$10-15/year
-
-## Backup strategy
-
-The DB is just a normal PostgreSQL database. Back it up via:
-
-```bash
-# Dump to file
-pg_dump "postgresql://USER:PASSWORD@HOST:PORT/DBNAME" > backup.sql
-
-# Restore
-psql "postgresql://USER:PASSWORD@HOST:PORT/DBNAME" < backup.sql
-```
-
-Or set up automated daily backups in Coolify.
